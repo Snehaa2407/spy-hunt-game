@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spy Hunt - Multiplayer Game</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .subtitle {
+            text-align: center;
+            color: #ff6b6b;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+        .screen { display: none; }
+        .screen.active { display: block; }
+        input, button {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+        }
+        input {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        input::placeholder { color: rgba(255, 255, 255, 0.6); }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .room-code {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+            font-size: 2em;
+            letter-spacing: 5px;
+            font-weight: bold;
+        }
+        .player-list {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .player-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+        .role-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
+            font-size: 1.5em;
+        }
+        .role-card.spy {
+            background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%);
+        }
+        .timer {
+            text-align: center;
+            font-size: 3em;
+            margin: 20px 0;
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .info-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        .vote-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            margin: 5px 0;
+        }
+        .error {
+            background: rgba(255, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+        .game-instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🕵️ SPY HUNT 🕵️</h1>
+        <p class="subtitle">Find the spies among you!</p>
+        <div id="homeScreen" class="screen active">
+            <div class="game-instructions">
+                <h3>How to Play:</h3>
+                <p>• 10% of players are secretly SPIES</p>
+                <p>• Citizens know the location, spies don't</p>
+                <p>• Discuss for 3 minutes to find the spies</p>
+                <p>• Vote to eliminate suspects</p>
+                <p>• Citizens win if all spies are caught!</p>
+            </div>
+            <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
+            <button onclick="createRoom()">Create New Room</button>
+            <button onclick="showJoinRoom()">Join Existing Room</button>
+            <div id="errorMsg" class="error" style="display: none;"></div>
+        </div>
+        <div id="joinScreen" class="screen">
+            <input type="text" id="joinRoomCode" placeholder="Enter Room Code" maxlength="6" style="text-transform: uppercase;">
+            <button onclick="joinRoom()">Join Room</button>
+            <button onclick="backToHome()">Back</button>
+        </div>
+        <div id="lobbyScreen" class="screen">
+            <div class="room-code" id="roomCodeDisplay"></div>
+            <div class="info-box">
+                <p>Share this code with your tribe!</p>
+                <p id="playerCount">Players: 0/80</p>
+            </div>
+            <div class="player-list" id="playerList"></div>
+            <button id="startButton" onclick="startGame()" style="display: none;">Start Game</button>
+        </div>
+        <div id="gameScreen" class="screen">
+            <div class="timer" id="timer">3:00</div>
+            <div class="role-card" id="roleCard"></div>
+            <div class="info-box" id="gameInfo"></div>
+            <div class="player-list" id="gamePlayers"></div>
+        </div>
+        <div id="votingScreen" class="screen">
+            <h2 style="text-align: center; margin-bottom: 20px;">⚖️ VOTING TIME ⚖️</h2>
+            <p style="text-align: center; margin-bottom: 20px;">Who do you think is the spy?</p>
+            <div id="voteOptions"></div>
+        </div>
+        <div id="resultsScreen" class="screen">
+            <h2 style="text-align: center; margin-bottom: 20px;">🎭 GAME OVER 🎭</h2>
+            <div id="gameResults"></div>
+            <button onclick="location.reload()">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const socket = io();
+        let currentRoom = null;
+        let isHost = false;
+        
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMsg');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 3000);
+        }
+        
+        function createRoom() {
+            const name = document.getElementById('playerName').value.trim();
+            if (!name) { showError('Please enter your name'); return; }
+            socket.emit('createRoom', name);
+        }
+        
+        function showJoinRoom() {
+            const name = document.getElementById('playerName').value.trim();
+            if (!name) { showError('Please enter your name'); return; }
+            showScreen('joinScreen');
+        }
+        
+        function joinRoom() {
+            const name = document.getElementById('playerName').value.trim();
+            const roomCode = document.getElementById('joinRoomCode').value.trim().toUpperCase();
+            if (!roomCode) { showError('Please enter room code'); return; }
+            socket.emit('joinRoom', { roomCode, playerName: name });
+        }
+        
+        function backToHome() { showScreen('homeScreen'); }
+        function startGame() { socket.emit('startGame', currentRoom); }
+        function vote(targetId) {
+            socket.emit('vote', { roomCode: currentRoom, targetId });
+            document.querySelectorAll('.vote-button').forEach(btn => btn.disabled = true);
+            showError('Vote submitted!');
+        }
+        
+        socket.on('roomCreated', (data) => {
+            currentRoom = data.roomCode;
+            isHost = data.isHost;
+            document.getElementById('roomCodeDisplay').textContent = data.roomCode;
+            showScreen('lobbyScreen');
+            if (isHost) document.getElementById('startButton').style.display = 'block';
+        });
+        
+        socket.on('roomJoined', (data) => {
+            currentRoom = data.roomCode;
+            document.getElementById('roomCodeDisplay').textContent = data.roomCode;
+            showScreen('lobbyScreen');
+        });
+        
+        socket.on('gameState', (state) => {
+            document.getElementById('playerCount').textContent = `Players: ${state.playerCount}/80`;
+            const playerList = document.getElementById('playerList');
+            playerList.innerHTML = state.players.map(p => `<div class="player-item">${p.name}</div>`).join('');
+            if (isHost && state.playerCount >= 3) document.getElementById('startButton').disabled = false;
+            
+            if (document.getElementById('votingScreen').classList.contains('active')) {
+                const voteOptions = document.getElementById('voteOptions');
+                voteOptions.innerHTML = state.players.filter(p => p.isAlive).map(p => 
+                    `<button class="vote-button" onclick="vote('${p.id}')">${p.name}</button>`
+                ).join('');
+            }
+        });
+        
+        socket.on('roleAssigned', (data) => {
+            const roleCard = document.getElementById('roleCard');
+            roleCard.className = 'role-card ' + (data.isSpy ? 'spy' : '');
+            roleCard.innerHTML = data.isSpy ? 
+                `<h2>🕵️ YOU ARE A SPY! 🕵️</h2><p>Blend in!</p>` :
+                `<h2>👥 CITIZEN 👥</h2><p>Location: <strong>${data.location}</strong></p>`;
+        });
+        
+        socket.on('gameStarted', (data) => {
+            showScreen('gameScreen');
+            let timeLeft = data.duration / 1000;
+            const timerInterval = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById('timer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                if (timeLeft <= 0) clearInterval(timerInterval);
+            }, 1000);
+        });
+        
+        socket.on('votingPhase', () => showScreen('votingScreen'));
+        
+        socket.on('gameEnd', (data) => {
+            showScreen('resultsScreen');
+            let html = '';
+            if (data.eliminated) {
+                html += `<div class="info-box"><h3>Eliminated: ${data.eliminated.name}</h3>
+                         <p>${data.eliminated.wasSpy ? '✅ Was a SPY!' : '❌ Was NOT a spy'}</p></div>`;
+            }
+            html += '<div class="info-box"><h3>The Spies Were:</h3>';
+            data.spies.forEach(spy => html += `<p>🕵️ ${spy.name}</p>`);
+            html += `<p><strong>Location: ${data.location}</strong></p></div>`;
+            document.getElementById('gameResults').innerHTML = html;
+        });
+        
+        socket.on('error', (message) => showError(message));
+    </script>
+</body>
+</html>
