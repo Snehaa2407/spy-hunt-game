@@ -50,7 +50,7 @@ class GameRoom {
   }
 
   startGame() {
-    if (this.players.size < 3) return false;
+    if (this.players.size < 1) return false;
     
     this.gameStarted = true;
     this.location = locations[Math.floor(Math.random() * locations.length)];
