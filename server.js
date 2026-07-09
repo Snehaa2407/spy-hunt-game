@@ -154,29 +154,34 @@ io.on('connection', (socket) => {
   });
 
   socket.on('startGame', (roomCode) => {
+      console.log("Start Game clicked for room:", roomCode);
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    if (room.startGame()) {
-      for (const [playerId, player] of room.players) {
-        io.to(playerId).emit('roleAssigned', {
-          isSpy: player.isSpy,
-          location: player.isSpy ? 'You are a SPY!' : room.location,
-          spyCount: room.spies.length
-        });
-      }
+    if (!room.startGame()) {
+        socket.emit('error', 'Unable to start game.');
+        return;
+    }
 
-      io.to(roomCode).emit('gameStarted', {
+    // Keep the rest of your existing code exactly the same
+    for (const [playerId, player] of room.players) {
+        io.to(playerId).emit('roleAssigned', {
+            isSpy: player.isSpy,
+            location: player.isSpy ? 'You are a SPY!' : room.location,
+            spyCount: room.spies.length
+        });
+    }
+
+    io.to(roomCode).emit('gameStarted', {
         duration: GAME_DURATION,
         playerCount: room.players.size,
         spyCount: room.spies.length
-      });
+    });
 
-      room.gameTimer = setTimeout(() => {
+    room.gameTimer = setTimeout(() => {
         io.to(roomCode).emit('votingPhase');
-      }, GAME_DURATION);
-    }
-  });
+    }, GAME_DURATION);
+});
 
   socket.on('vote', ({ roomCode, targetId }) => {
     const room = rooms.get(roomCode);
